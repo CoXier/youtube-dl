@@ -127,18 +127,49 @@ class YoukuIE(InfoExtractor):
 
     def get_format_name(self, fm):
         _dict = {
-            '3gp': 'h6',
-            '3gphd': 'h5',
-            'flv': 'h4',
+            'flv': 'h5',
+            'mp4': 'h5',
+            'mp4sd': 'h5',
+
+            '3gphd': 'h4',
             'flvhd': 'h4',
-            'mp4': 'h3',
+
             'mp4hd': 'h3',
-            'mp4hd2': 'h4',
-            'mp4hd3': 'h4',
+
+            'mp4hd2': 'h2',
+            'mp4hd2v2': 'h2',
             'hd2': 'h2',
+            'hd2v2': 'h2',
+
             'hd3': 'h1',
+            'hd3v2': 'h1',
+            'mp4hd3': 'h1',
+            'mp4hd3v2': 'h1'
         }
         return _dict.get(fm)
+
+    def parse_ext_l(self, fm):
+        ext_dict = {
+            'flv': 'flv',
+            'mp4': 'mp4',
+            'mp4sd': 'mp4',
+
+            '3gphd': 'mp4',
+            'flvhd': 'mp4',
+
+            'mp4hd': 'mp4',
+
+            'mp4hd2': 'mp4',
+            'mp4hd2v2': 'mp4',
+            'hd2': 'flv',
+            'hd2v2': 'flv',
+
+            'hd3': 'flv',
+            'hd3v2': 'flv',
+            'mp4hd3': 'mp4',
+            'mp4hd3v2': 'mp4'
+        }
+        return ext_dict[fm]
 
     def _real_extract(self, url):
         video_id = self._match_id(url)
@@ -154,7 +185,7 @@ class YoukuIE(InfoExtractor):
         # request basic data
         basic_data_params = {
             'vid': video_id,
-            'ccode': '0507',
+            'ccode': '0512',
             'client_ip': '192.168.1.1',
             'utid': cna,
             'client_ts': time.time() / 1000,
@@ -192,27 +223,30 @@ class YoukuIE(InfoExtractor):
         video_data = data['video']
         title = video_data['title']
 
-        formats = [{
-            'url': stream['m3u8_url'],
-            'format_id': self.get_format_name(stream.get('stream_type')),
-            'ext': 'mp4',
-            'protocol': 'm3u8_native',
-            'filesize': int(stream.get('size')),
-            'width': stream.get('width'),
-            'height': stream.get('height'),
-        } for stream in data['stream'] if stream.get('channel_type') != 'tail']
-        self._sort_formats(formats)
-
+        # construct info
+        entries = [{
+            'id': '%s_part%d' % (video_id, i + 1),
+            'title': title,
+            'formats': [],
+            # some formats are not available for all parts, we have to detect
+            # which one has all
+        } for i in range(max(len(v.get('segs')) for v in data['stream']))]
+        for stream in data['stream']:
+            fm = stream.get('stream_type')
+            for seg, entry in zip(stream['segs'], entries):
+                entry['formats'].append({
+                    'url': seg['cdn_url'],
+                    'format_id': self.get_format_name(fm),
+                    'ext': self.parse_ext_l(fm),
+                    'filesize': int(seg['size']),
+                    'width': stream.get('width'),
+                    'height': stream.get('height'),
+                })
         return {
+            '_type': 'multi_video',
             'id': video_id,
             'title': title,
-            'formats': formats,
-            'duration': video_data.get('seconds'),
-            'thumbnail': video_data.get('logo'),
-            'uploader': video_data.get('username'),
-            'uploader_id': str_or_none(video_data.get('userid')),
-            'uploader_url': data.get('uploader', {}).get('homepage'),
-            'tags': video_data.get('tags'),
+            'entries': entries,
         }
 
 
